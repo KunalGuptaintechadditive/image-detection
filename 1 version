@@ -1,0 +1,110 @@
+#include <opencv2/opencv.hpp>
+#include <iostream>
+
+using namespace cv;
+using namespace std;
+
+// Function prototypes
+Point2f pixelToRealCoordinates(int pixelX, int pixelY, int imageSize);
+void findContoursAndDraw(Mat& image, const Mat& binary, int sideLength);
+Mat perspectiveTransform(const Mat& originalImage, const vector<Point2f>& source_points, int sideLength);
+
+
+
+// Main function
+int main() {
+    // Load the image
+    Mat originalImage = imread("C:\\Users\\kunal.g\\Pictures\\buildlayer\\LayerNumber307.png");
+    if (originalImage.empty()) {
+        cerr << "Error: Couldn't read the image" << endl;
+        return -1;
+    }
+
+    // Define the source points (corner points of the distorted rectangle)
+    vector<Point2f> source_points = {
+        Point2f(409, 232), // top-left corner
+        Point2f(981, 196), // top-right corner
+        Point2f(1015, 807), // bottom-right corner
+        Point2f(412, 809)  // bottom-left corner
+    };
+
+    int sideLength = 1000; // You can change this to your desired size
+
+    // Perform the perspective transformation
+    Mat correctedImage = perspectiveTransform(originalImage, source_points, sideLength);
+
+    // Convert to grayscale and threshold
+    Mat gray, binary;
+    cvtColor(correctedImage, gray, COLOR_BGR2GRAY);
+    threshold(gray, binary, 180, 255, THRESH_BINARY);
+
+    // Find contours and draw them
+    findContoursAndDraw(correctedImage, binary, sideLength);
+
+    // Display the result
+    imshow("Detected Points", correctedImage);
+    waitKey(0);
+
+    return 0;
+}
+
+// Function definitions
+
+// Converts pixel to real-world coordinates
+Point2f pixelToRealCoordinates(int pixelX, int pixelY, int imageSize) {
+    const float scaleFactor = 350.0f / 1000.0f;
+    float realX = pixelX * scaleFactor;
+    float realY = (imageSize - pixelY) * scaleFactor;
+    return Point2f(realX, realY);
+}
+
+// Finds contours and draws them, prints real world coordinates
+void findContoursAndDraw(Mat& image, const Mat& binary, int sideLength) {
+    vector<vector<Point>> contours;
+    findContours(binary, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+    vector<Point2f> white_pixel_coords;
+
+    for (const auto& contour : contours) {
+        // Draw filled contour
+        drawContours(image, vector<vector<Point>>{contour}, -1, Scalar(0, 0, 255), -1);
+
+        Rect contourboundingRect = boundingRect(contour);
+
+        for (int y = contourboundingRect.y; y < contourboundingRect.y + contourboundingRect.height; ++y) {
+            for (int x = contourboundingRect.x; x < contourboundingRect.x + contourboundingRect.width; ++x) {
+                if (pointPolygonTest(contour, Point2f(x, y), false) >= 0) {
+                    if (binary.at<uchar>(y, x) == 255) {
+                        white_pixel_coords.push_back(Point2f(x, y));
+
+                        //pixel world cordinate
+                        cout << "Pixel World Cordinate" << "(" << x << "," << y << ")" << endl;
+
+                        // Convert to real-world coordinates
+                        Point2f realCord = pixelToRealCoordinates(x, y, sideLength);
+                        cout << "Real world coordinates: (" << realCord.x << ", " << realCord.y << ")" << endl;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Performs the perspective transformation
+Mat perspectiveTransform(const Mat& originalImage, const vector<Point2f>& source_points, int sideLength) {
+    // Define the destination points (corner points of the desired square)
+    vector<Point2f> destination_points = {
+        Point2f(0, 0),
+        Point2f(sideLength, 0),
+        Point2f(sideLength, sideLength),
+        Point2f(0, sideLength)
+    };
+
+    // Compute the perspective transformation matrix
+    Mat transformMatrix = getPerspectiveTransform(source_points, destination_points);
+
+    // Apply the perspective transformation
+    Mat correctedImage;
+    warpPerspective(originalImage, correctedImage, transformMatrix, Size(sideLength, sideLength));
+    return correctedImage;
+
+}
